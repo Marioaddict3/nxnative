@@ -36,9 +36,22 @@ _sites = [
     (0x2537e0, 0x52805a03, 6, _lay, [_mov(3)], 'set-size helper main+0x2537dc: mov w3,#720 → the layout height (bit 6)'),
     (0x2539d4, 0x52805a04, 7, _lay, [_mov(4)], 'set-size helper main+0x2539d0: mov w4,#720 → the layout height (bit 7)'),
     (0x253c54, 0x52805a04, 8, _lay, [_mov(4)], 'set-size helper main+0x253c50: mov w4,#720 → the layout height (bit 8)'),
-    # default 2D / layout viewports {0, 0, 1280, 720, depth 0..1} built on the stack (ACNH-style layout size)
-    (0x2864e8, 0x52805a08, 9, _lay, [_mov(8)], 'default viewport main+0x2864e0: height 720 → the layout height (bit 9)'),
-    (0x28672c, 0x52805a09, 10, _lay, [_mov(9)], 'default viewport main+0x28672c: height 720 → the layout height (bit 10)'),
+    # default 2D / layout viewports: height stays 720 (growing it stretched menus that still draw in 720-space).
+    # Bit 9 instead centres them in the taller RT — see _vp_center.
+]
+
+# 2D viewport / scissor builders (main+0x2864d0..0x286b80): stp wzr,wH,[sp,#0xc] writes y=0,h=720.
+# Keep h=720 and set y=(layout_height-720)/2 so 16:9 menu content stays native scale, centred, with
+# empty bands above/below (mush8). One bit (9) gates the whole cluster; bit 10 unused for now.
+_vp_center = [
+    (0x2864ec, 0x2901a3ff, 8),   # after mov w8,#720 in main+0x2864d0
+    (0x286568, 0x2901a3ff, 8),
+    (0x2865cc, 0x2901a3ff, 8),
+    (0x286648, 0x2901a3ff, 8),
+    (0x2866ac, 0x2901a3ff, 8),
+    (0x286738, 0x2901a7ff, 9),   # mov w9,#720 path (was bit 10 height stub)
+    (0x2867ac, 0x2901a3ff, 8),
+    (0x286830, 0x2901a3ff, 8),
 ]
 # UI anchor math (main+0x3cb718.., main+0x3cbd18..): the layout's anchor index (0..3) picks a float of rodata main+0x11ba310 {1280.0, 720.0, 1280.0, 720.0} and positions the
 # pane at (a + b) x 0.5: an odd index is a height, which takes the layout height so edge widgets anchored to the bottom move to the taller screen's edge (bit 11)
@@ -69,9 +82,9 @@ _TANF, _ATANF = 0xfda760, 0xfda770
 
 # 2D / layout orthography (bit 15): nn::bezel::Camera::SetOrthography at main+0x61ffa0. Several builders
 # (the type-0 dispatch at main+0x64d18, and at least main+0x6def00) pass top/bottom/left/right; a 16:9
-# span of ~720 (or ~1080) still stretched UI after the single-builder stub. This entry hook keeps L/R
-# (horizontal FOV of the layout) and expands T/B around the centre to the layout / output height so
-# 1280×720 content stays native scale with more above and below (mush8). s6/s7/s16/s17 are scratch.
+# span of ~720 (or ~1080) still stretched UI after the single-builder stub. This entry hook keeps L/R and expands T/B around the centre when the ortho is the
+# centred ±h/2 form (top≈-bottom); pixel 0..h orthos are left alone. Pair with bit 9 viewport
+# centring for menus that never call SetOrthography. s6/s7/s16/s17 are scratch.
 _ortho_at, _ortho_orig, _ortho_bit = 0x61ffa0, 0xfc1c0fee, 15
 
 
@@ -92,6 +105,18 @@ def screen_shape(ctx):
         stub(at, orig, bit, load, apply, why)
     for at, orig, idx, d in _anchor:
         stub(at, orig, 11, _layf, [_fmov(d)], 'UI anchor size: an odd (height) index takes the layout height (bit 11)', index=idx)
+    # bit 9: centre 1280x720 viewports in the taller layout RT (y = (lay-720)/2, h stays 720)
+    for at, orig, hreg in _vp_center:
+        site(at, struct.pack('<I', orig).hex())
+        start = here()
+        emit(ADRP(16, here(), STATE)); emit(_mask); emit(_tbz17(9, 7))
+        emit(_lay); emit(_cbz17(5))
+        emit(0x510b4231)                                    # sub w17,w17,#720
+        emit(0x53017e31)                                    # lsr w17,w17,#1
+        emit((orig & ~0x1f) | 17)                             # stp w17,wH,[sp,#0xc] (Rt was wzr)
+        emit(B(here(), at + 4))
+        emit(orig); emit(B(here(), at + 4))
+        put(at, [B(at, start)], f'viewport/scissor main+{at:#x}: y=0 → (layout height-720)/2, height stays 720 (bit 9)')
     for at, orig, bit, w, h, why in _win:
         site(at, struct.pack('<I', orig).hex())
         start = here()
@@ -185,6 +210,8 @@ def screen_shape(ctx):
     E(0xbd405a11); E(0x1e202228); i_r0 = len(words); E(0)                 # ratio on?
     E(0xbd405211); E(0x1e202228); i_l0 = len(words); E(0)                 # layf on?
     E(0x1e213806); E(0x1e20c0c6)                                         # s6 = |top-bottom|
+    E(0x1e212807); E(0x1e20c0e7); E(0x1e2e1010); E(0x1e3020e0)           # |top+bottom|<1? (centred ±h/2 only)
+    i_not_sym = len(words); E(0)                                         # b.ge orig (pixel 0..h orthos skip)
     E(0x52800011); E(0x72a88691); E(0x1e270227)                           # s7 = 720
     E(0x1e2738d1); E(0x1e20c231); E(0x1e2e1010); E(0x1e302220)           # |s6-720|<1?
     i_ge720 = len(words); E(0)
@@ -202,6 +229,7 @@ def screen_shape(ctx):
     words[0] = ADRP(16, start, STATE)
     tbz(i_tbz, i_orig)
     cond(i_r0, i_orig, 0); cond(i_l0, i_orig, 0)
+    cond(i_not_sym, i_orig, 0xa)
     cond(i_ge720, i_try1080, 0xa); b_to(i_do, i_expand)
     cond(i_ge1080, i_orig, 0xa)
     words[i_back] = B(start + i_back * 4, _ortho_at + 4)

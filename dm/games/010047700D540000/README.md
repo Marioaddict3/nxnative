@@ -2,7 +2,7 @@
 
 Update v262144, `main` build ID `FAD4615A54DCC997B07A7BE8588505DD62DD9A49` (the rewriter's key: `fad4615a54dcc997b07a7be8588505dd`). NDcube's NintendoWare **Bezel** engine (strings `D:/home/Bezel/...`, `BEXViewport`, `ProjectionType_PerspectiveFovy` / `ProjectionType_Orthographic`, `MultiViewport[%d]`), the engine of [Big Brain Academy: Brain vs. Brain](../0100620012D6E000/README.md) too; not sead / agl, so none of Breath of the Wild's or Animal Crossing: New Horizons' screen-shape functions exist here.
 
-**Status: screen-shape (Duo fill-aspect) profile, IPA keys partly guessed.** Window fill + Hor+ 3D verified on Duo at `a875409`; 2D UI still vertically stretched. Bit 15 now hooks `SetOrthography` entry (all ortho callers) to expand T/B only — untested on device.
+**Status: screen-shape (Duo fill-aspect) profile, IPA keys partly guessed.** Window fill + Hor+ 3D OK; menus still stretched after SetOrthography-only (`757d01b`). Next: bit 9 centres 1280×720 viewports in the tall RT (keep h=720); bit 15 only expands centred ±h/2 orthos.
 
 ## What it needs
 
@@ -38,13 +38,13 @@ Hybrid of the two references: Breath of the Wild-style size stubs for the render
 | 6 | `0x2537e0` | `mov w3,#720` (set-size thunk main+0x2537dc → main+0x68a110) | the layout height |
 | 7 | `0x2539d4` | `mov w4,#720` (thunk main+0x2539d0 → main+0x6f0b00) | the layout height |
 | 8 | `0x253c54` | `mov w4,#720` (thunk main+0x253c50 → main+0x6f0b00) | the layout height |
-| 9 | `0x2864e8` | `mov w8,#720` (default viewport {0,0,1280,720} of main+0x2864d0) | the layout height |
-| 10 | `0x28672c` | `mov w9,#720` (default viewport of main+0x286720) | the layout height |
+| 9 | `0x2864ec` and 7 siblings in main+0x2864d0..0x286830 | `stp wzr,wH,[sp,#0xc]` (y=0, h=720) | y → (layout height−720)/2, **h stays 720** (centre 16:9 menus in the tall RT; growing h had stretched 720-space draws). Bit 10 unused. |
+| 10 | — | — | unused (was a second viewport height stub; folded into bit 9) |
 | 11 | `0x3cb728`, `0x3cb744`, `0x3cbd28`, `0x3cbd44` | `ldr s,[x,idx,lsl #2]` from rodata main+0x11ba310 {1280.0,720.0,1280.0,720.0} by anchor index 0..3 | an odd (height) index → the layout height (float), so bottom-anchored panes sit at the taller screen's edge |
 | 12 | `0x6f0b40` | `str w4,[x8,x9]` (set-size request height) | a 16:9 request → w × output height / 1920 |
 | 13 | `0x68952c` / `0x68954c` / `0x689588` / `0x68959c` / `0x6895d8` | window config `SetDisplaySize` / handheld / docked height stores | a 16:9 height → w × output height / 1920 (swap chain + crops) |
 | 14 | `0x61f898` | `mov v8.16b,v1.16b` in `nn::bezel::Camera::SetProjectionPerspectiveFovy(ffff)` | Hor+ mush8: 16:9 or already-ratio aspect → ratio at +0x58, fovy widened by k at +0x5c via tanf/atanf PLT (keeps H FOV, adds V); last widened at +0x100 |
-| 15 | `0x61ffa0` | first insn of `nn::bezel::Camera::SetOrthography` | when |top−bottom| ≈ 720 / 1080, expand T/B to layout / output height around the centre; L/R kept (Hor+ 2D; catches every ortho builder, not only main+0x64d18) |
+| 15 | `0x61ffa0` | first insn of `nn::bezel::Camera::SetOrthography` | when the ortho is centred (±h/2, top≈−bottom) and |span|≈720/1080, expand T/B to layout/output height; L/R kept; pixel 0..h orthos skipped |
 
 **Why no `duo_anchor.c`.** Breath of the Wild's and New Horizons' anchoring hooks `nn::ui2d::Pane::Calculate` and walks NintendoWare Ui2d pane fields (parent, translation, size, global matrix, name). Bezel's layout panes have not been identified (no class, vtable or field offsets), so porting it would be guesswork (~ACNH's 66-line / BotW's 258-line duo_anchor.c plus a Bezel field RE pass: rough cost another focused session, not this lean Hor+ pass). The anchor-size loads (bit 11) are the nearest honest equivalent: they move what Bezel anchors to the layout's bottom edge, but they do not stretch full-screen backgrounds or move the HUD's children the way duo_calc does.
 
@@ -58,7 +58,7 @@ Hybrid of the two references: Breath of the Wild-style size stubs for the render
 
 - **No device or Mac test.** Which bits help or hurt is unknown; start with `DM_SCREEN_ASPECT_SITES` covering a few bits at a time.
 - **Bits 12-13 verified on Duo** (`0a54a56`): window fills (WindowCrop / present 1920x1344) but 2D and 3D content was stretched.
-- **Bit 14 Hor+ 3D verified on Duo** (`a875409`): keeps H FOV, widens fovy. **Bit 15 still open**: the single-builder stub at main+0x64d18 left UI stretched (other ortho callers, e.g. main+0x6def00); bit 15 now expands T/B at `SetOrthography` itself. Expect unstretched 2D at native 16:9 scale with extra above/below. Anchoring still deferred.
+- **Bit 14 Hor+ 3D verified on Duo** (`a875409`). **Menus still stretched after `757d01b`** (SetOrthography alone). Bit 9 now centres the 1280×720 viewport cluster instead of growing height; bit 15 skips non-centred orthos. Still open if menus use the scissor-style helpers at main+0x286870.. (Pattern C, not stubbed) or a per-pane scale. The old "second RT table" at 0x11c3d8c is a jump table (0x11c3d94), not sizes. Anchoring still deferred.
 - Callee semantics (main+0x259690 / 0x259620 / 0x68a110 / 0x6f0b00 / 0x2f25b0 / 0x843340) are inferred from their arguments, not named. The display-mode table's layout (+0x6c..+0x84 as width / height arrays) is a reading of its stores.
 - Not stubbed: the second render-target table (rodata main+0x11c3d8c, read from main+0x338cdc), the UI rect main+0x11ba318 (main+0x3ff4c0), the {1920.0,1080.0,…} block main+0x11ba700 (no direct reference found), the 1152x648 / 1600x900 thunks next to bits 6-8, and ORR-immediate / literal-load forms (only MOVZ immediates and rodata pairs were scanned).
 - Binding: `build` → unreviewed. Big Brain Academy is on the same engine (1.56); whether these functions match there (an engine rule) is not checked.
