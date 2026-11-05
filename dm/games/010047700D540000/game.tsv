@@ -22,8 +22,8 @@ shader_versions	v262144
 # ---- Files ----
 # TODO bring-up: modules guessed (main + sdk, the survey's base). The subsdk* (GLSLC, movie) and their build IDs are unknown without the NSP; the NSP script's NRO pass adds subsdks NROs import
 modules	main sdk
-# TODO bring-up: guessed from Big Brain Academy (same Bezel engine, .bea archives); check against the RomFS
-romfs_marker	Archive/Permanent~01Boot.nx.bea
+# RomFS marker (confirmed from Clubhouse RomFS listing): Archive/boot.nx.bea (no Permanent~01Boot)
+romfs_marker	Archive/boot.nx.bea
 zip_store	.bea:.bfstm:.mp4:.metallib
 
 # ---- Memory ----
