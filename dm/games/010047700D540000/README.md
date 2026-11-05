@@ -2,7 +2,7 @@
 
 Update v262144, `main` build ID `FAD4615A54DCC997B07A7BE8588505DD62DD9A49` (the rewriter's key: `fad4615a54dcc997b07a7be8588505dd`). NDcube's NintendoWare **Bezel** engine (strings `D:/home/Bezel/...`, `BEXViewport`, `ProjectionType_PerspectiveFovy` / `ProjectionType_Orthographic`, `MultiViewport[%d]`), the engine of [Big Brain Academy: Brain vs. Brain](../0100620012D6E000/README.md) too; not sead / agl, so none of Breath of the Wild's or Animal Crossing: New Horizons' screen-shape functions exist here.
 
-**Status: screen-shape (Duo fill-aspect) profile, IPA keys partly guessed.** Window fill verified on Duo at `0a54a56` (stretched); bits 14–15 (Bezel perspective aspect + layout orthography) untested on device.
+**Status: screen-shape (Duo fill-aspect) profile, IPA keys partly guessed.** Window fill verified on Duo at `0a54a56` (stretched); bits 14–15 at `f4ed9f5` still stretched / crop-sides; Hor+ mush8 (widen fovy + unstretched ortho) untested on device.
 
 ## What it needs
 
@@ -43,10 +43,10 @@ Hybrid of the two references: Breath of the Wild-style size stubs for the render
 | 11 | `0x3cb728`, `0x3cb744`, `0x3cbd28`, `0x3cbd44` | `ldr s,[x,idx,lsl #2]` from rodata main+0x11ba310 {1280.0,720.0,1280.0,720.0} by anchor index 0..3 | an odd (height) index → the layout height (float), so bottom-anchored panes sit at the taller screen's edge |
 | 12 | `0x6f0b40` | `str w4,[x8,x9]` (set-size request height) | a 16:9 request → w × output height / 1920 |
 | 13 | `0x68952c` / `0x68954c` / `0x689588` / `0x68959c` / `0x6895d8` | window config `SetDisplaySize` / handheld / docked height stores | a 16:9 height → w × output height / 1920 (swap chain + crops) |
-| 14 | `0x61f898` | `mov v8.16b,v1.16b` in `nn::bezel::Camera::SetProjectionPerspectiveFovy(ffff)` | a 16:9 aspect → the screen ratio at state +0x58 (covers the 3-arg overload's hard-coded 16/9 load too) |
-| 15 | `0x64d18` | `ldp s2,s1,[x19,#0x2c]` (orthographic branch of the projection-type dispatch) | 720 × 16:9 → layout height + ratio; 1080 × 16:9 → output height + ratio |
+| 14 | `0x61f898` | `mov v8.16b,v1.16b` in `nn::bezel::Camera::SetProjectionPerspectiveFovy(ffff)` | Hor+ mush8: 16:9 or already-ratio aspect → ratio at +0x58, fovy widened by k at +0x5c via tanf/atanf PLT (keeps H FOV, adds V); last widened at +0x100 |
+| 15 | `0x64d18` | `ldp s2,s1,[x19,#0x2c]` (orthographic branch of the projection-type dispatch) | 720 / 1080 height → layout / output height + ratio (no aspect gate) |
 
-**Why no `duo_anchor.c`.** Breath of the Wild's and New Horizons' anchoring hooks `nn::ui2d::Pane::Calculate` and walks NintendoWare Ui2d pane fields (parent, translation, size, global matrix, name). Bezel's layout panes have not been identified (no class, vtable or field offsets), so porting it would be guesswork. The anchor-size loads (bit 11) are the nearest honest equivalent: they move what Bezel anchors to the layout's bottom edge, but they do not stretch full-screen backgrounds or move the HUD's children the way duo_calc does.
+**Why no `duo_anchor.c`.** Breath of the Wild's and New Horizons' anchoring hooks `nn::ui2d::Pane::Calculate` and walks NintendoWare Ui2d pane fields (parent, translation, size, global matrix, name). Bezel's layout panes have not been identified (no class, vtable or field offsets), so porting it would be guesswork (~ACNH's 66-line / BotW's 258-line duo_anchor.c plus a Bezel field RE pass: rough cost another focused session, not this lean Hor+ pass). The anchor-size loads (bit 11) are the nearest honest equivalent: they move what Bezel anchors to the layout's bottom edge, but they do not stretch full-screen backgrounds or move the HUD's children the way duo_calc does.
 
 ### Verified
 
@@ -58,7 +58,7 @@ Hybrid of the two references: Breath of the Wild-style size stubs for the render
 
 - **No device or Mac test.** Which bits help or hurt is unknown; start with `DM_SCREEN_ASPECT_SITES` covering a few bits at a time.
 - **Bits 12-13 verified on Duo** (`0a54a56`): window fills (WindowCrop / present 1920x1344) but 2D and 3D content was stretched.
-- **Bits 14-15 untested on a device**: bit 14 sets Bezel camera aspect to the screen ratio for 16:9 inputs; bit 15 retargets layout orthography 720/1080 × 16:9. Expect no vertical stretch; 3D keeps its vertical FOV and loses a little of each side (BotW-style fovy widen not applied). If UI is still stretched, try `DM_SCREEN_ASPECT_SITES=0xc000` (bits 14–15 only) then add layout bits back.
+- **Bits 14-15 Hor+ untested on a device**: bit 14 widens fovy (Hor+) and sets aspect to the screen ratio; bit 15 retargets layout orthography 720/1080 → layout/output height + ratio. Expect 16:9 sides kept with more above/below in 3D, and unstretched 2D in a 1280×896 layout. Full `duo_anchor.c` pane re-anchoring is still open (Bezel pane fields not identified; bit 11 only moves odd-index anchor sizes).
 - Callee semantics (main+0x259690 / 0x259620 / 0x68a110 / 0x6f0b00 / 0x2f25b0 / 0x843340) are inferred from their arguments, not named. The display-mode table's layout (+0x6c..+0x84 as width / height arrays) is a reading of its stores.
 - Not stubbed: the second render-target table (rodata main+0x11c3d8c, read from main+0x338cdc), the UI rect main+0x11ba318 (main+0x3ff4c0), the {1920.0,1080.0,…} block main+0x11ba700 (no direct reference found), the 1152x648 / 1600x900 thunks next to bits 6-8, and ORR-immediate / literal-load forms (only MOVZ immediates and rodata pairs were scanned).
 - Binding: `build` → unreviewed. Big Brain Academy is on the same engine (1.56); whether these functions match there (an engine rule) is not checked.

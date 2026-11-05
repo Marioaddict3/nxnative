@@ -58,16 +58,22 @@ _win = [
     (0x6895d8, 0xb9008503, 13, 2, 3, 'window config docked size [i] main+0x6895c0 (+0x84): str w3 → the screen shape height (bit 13)'),
 ]
 
-# Perspective aspect (bit 14): nn::bezel::Camera::SetProjectionPerspectiveFovy(ffff) at main+0x61f880 (dynsym). The 3-arg overload (main+0x61e900) loads a hard-coded 16/9
-# (rodata main+0x11b93d0) into s1 and branches here; other callers pass an aspect in s1. After the prologue copies the aspect into s8 (main+0x61f898), a 16:9 aspect
-# (within state +0x78 of the constant at +0x74) takes the screen's ratio at +0x58 so the frustum matches the taller window. Other aspects pass. s16 / s17 are scratch
-# (caller-saved); s0 (fovy) stays; s1 is overwritten by the next instruction (fmov s1,#0.5).
+# Perspective Hor+ (bit 14): nn::bezel::Camera::SetProjectionPerspectiveFovy(ffff) at main+0x61f880.
+# After mov v8,v1 (aspect→s8), a 16:9 or already-screen-ratio aspect takes the screen ratio at +0x58 and widens
+# fovy to 2 atan(tan(fovy/2)×k), k at +0x5c = (16/9)/ratio, so the taller picture keeps 16:9's sides and shows
+# more above and below (mush8 / BotW Hor+). tanf / atanf via main's PLT (0xfda760 / 0xfda770). Last widened fovy
+# at state +0x100 skips a second widen when the 3-arg overload (hard-coded 16/9) is called again with the
+# widened angle. s2 / s3 / x0 spilled across the calls; s1 is scratch (next insn is fmov s1,#0.5).
 _proj_at, _proj_orig, _proj_bit = 0x61f898, 0x4ea11c28, 14
+_TANF, _ATANF = 0xfda760, 0xfda770
 
-# 2D / layout orthography (bit 15): projection-type dispatch at main+0x64bb0, orthographic case (type 0) at main+0x64d18 builds L/R/T/B from height (+0x30) and aspect (+0x2c).
-# A 720 x 16:9 pair becomes the layout height (+0x50) and the screen ratio; a 1080 x 16:9 pair becomes the output height (scvtf of +0x48) and the ratio. Other sizes pass.
-# The type-0x400 branch calls SetProjectionPerspectiveFovy and is covered by bit 14. s0 is free (next is fmov s0,#0.5).
+# 2D / layout orthography (bit 15): projection-type dispatch at main+0x64bb0, orthographic case (type 0) at
+# main+0x64d18 builds L/R/T/B from height (+0x30) and aspect (+0x2c). A 720 height becomes the layout height
+# (+0x50) and the screen ratio; a 1080 height becomes the output height (scvtf of +0x48) and the ratio. No
+# aspect gate: a height that still says 720 after the ratio was already written still grows (the previous
+# 16:9-only gate left those stretched). Type 0x400 calls SetProjectionPerspectiveFovy (bit 14).
 _ortho_at, _ortho_orig, _ortho_bit = 0x64d18, 0x2d458662, 15
+
 
 
 def screen_shape(ctx):
@@ -95,32 +101,85 @@ def screen_shape(ctx):
             emit(word)
         emit(orig); emit(B(here(), at + 4))
         put(at, [B(at, start)], why)
-    # bit 14
+    # bit 14: Hor+ (keep H FOV, widen V fovy) + aspect → ratio
     site(_proj_at, struct.pack('<I', _proj_orig).hex())
-    start = here(); emit(_proj_orig)
-    emit(ADRP(16, here(), STATE)); emit(_mask); emit(_tbz17(_proj_bit, 11))
-    emit(0xbd405a11); emit(0x1e202228); emit(0x54000100)                 # ratio on?
-    emit(0xbd407610); emit(0x1e303911); emit(0x1e20c231); emit(0xbd407a10)  # |s8-16/9|
-    emit(0x1e302220); emit(0x5400004a)                                   # within wtol?
-    emit(0xbd405a08)                                                     # s8 = ratio
-    emit(B(here(), _proj_at + 4))
-    put(_proj_at, [B(_proj_at, start)], 'SetProjectionPerspectiveFovy: a 16:9 aspect → the screen ratio (bit 14)')
-    # bit 15
+    start = here()
+    words = []
+    def E(w):
+        words.append(w & 0xffffffff)
+    E(_proj_orig)
+    E(0x6dbf0fe2); E(0xf81f0fe0)                                   # stp d2,d3,[sp,#-0x10]!; str x0,[sp,#-0x10]!
+    E(ADRP(16, start + len(words) * 4, STATE)); E(_mask)
+    i_tbz = len(words); E(0)                                      # tbz bit14 → restore
+    E(0xbd405a11); E(0x1e202228)                                   # s17 = ratio; fcmp #0
+    i_off = len(words); E(0)                                      # b.eq restore
+    E(0xbd407610); E(0x1e303901); E(0x1e20c021)                     # |s8 − 16/9|
+    E(0xbd407a10); E(0x1e302020)
+    i_not169 = len(words); E(0)                                   # b.ge try_ratio
+    i_b_do = len(words); E(0)                                     # b do
+    i_try = len(words)
+    E(0x1e313901); E(0x1e20c021); E(0xbd407a10); E(0x1e302020)     # |s8 − ratio|; wtol; fcmp
+    i_other = len(words); E(0)                                    # b.ge restore
+    i_do = len(words)
+    E(0x1e204228)                                                  # s8 = ratio
+    E(0xbd410210); E(0x1e302000)                                   # last widened; fcmp s0
+    i_same = len(words); E(0)                                     # b.eq restore
+    E(0x1e2c1001); E(0x1e210800)                                   # half = fovy × 0.5
+    i_bl_tan = len(words); E(0)
+    E(ADRP(16, start + (len(words) + 0) * 4, STATE)); E(0xbd405e01); E(0x1e210800)  # × k
+    i_bl_atan = len(words); E(0)
+    E(0x1e202800)                                                  # × 2
+    E(ADRP(16, start + len(words) * 4, STATE)); E(0xbd010200)     # store last widened
+    i_restore = len(words)
+    E(0xf84107e0); E(0x6cc10fe2)                                   # pop x0; pop d2,d3
+    i_back = len(words); E(0)                                     # b site+4
+    # patch PC-relative
+    def cond(i, target_i, c):
+        pc = start + i * 4; tgt = start + target_i * 4
+        words[i] = 0x54000000 | (((tgt - pc) // 4) & 0x7ffff) << 5 | c
+    def tbz(i, target_i, bit=_proj_bit):
+        pc = start + i * 4; tgt = start + target_i * 4
+        words[i] = _tbz17(bit, ((tgt - pc) // 4) & 0x3fff)
+    def bl(i, target):
+        pc = start + i * 4; words[i] = B(pc, target) | 0x80000000
+    def b_to(i, target_i):
+        pc = start + i * 4; words[i] = B(pc, start + target_i * 4)
+    # fix ADRPs that were emitted with wrong here() when using start+len — recompute
+    # word index of first ADRP after pops: indices
+    # Rebuild ADRP words properly:
+    # After E(_mask) the next is tbz; first ADRP is at index 3 (0=orig,1=stp,2=str,3=adrp)
+    words[3] = ADRP(16, start + 3 * 4, STATE)
+    # ADRP before ×k: after bl tanf
+    # ADRP before store: after fadd
+    tbz(i_tbz, i_restore)
+    cond(i_off, i_restore, 0)
+    cond(i_not169, i_try, 0xa)
+    b_to(i_b_do, i_do)
+    cond(i_other, i_restore, 0xa)
+    cond(i_same, i_restore, 0)
+    bl(i_bl_tan, _TANF)
+    words[i_bl_tan + 1] = ADRP(16, start + (i_bl_tan + 1) * 4, STATE)
+    bl(i_bl_atan, _ATANF)
+    words[i_bl_atan + 2] = ADRP(16, start + (i_bl_atan + 2) * 4, STATE)  # after fadd is +1 from bl_atan... 
+    # layout after i_bl_atan: bl; fadd; adrp; str; restore...
+    # i_bl_atan points to bl; +1 = fadd; +2 = adrp. Yes.
+    words[i_back] = B(start + i_back * 4, _proj_at + 4)
+    for w in words: emit(w)
+    put(_proj_at, [B(_proj_at, start)], 'SetProjectionPerspectiveFovy: Hor+ fovy widen + 16:9 aspect → screen ratio (bit 14)')
+    # bit 15: layout ortho height → layout/output, aspect → ratio (no aspect gate)
     site(_ortho_at, struct.pack('<I', _ortho_orig).hex())
     start = here(); emit(_ortho_orig)
-    emit(ADRP(16, here(), STATE)); emit(_mask); emit(_tbz17(_ortho_bit, 30))
-    emit(0xbd405a11); emit(0x1e202228); emit(0x54000360)                 # ratio on? b.eq +27
-    emit(0xbd407610); emit(0x1e303840); emit(0x1e20c000); emit(0xbd407a10)
-    emit(0x1e302000); emit(0x540002aa)                                   # aspect ~16/9? b.ge +21
+    emit(ADRP(16, here(), STATE)); emit(_mask); emit(_tbz17(_ortho_bit, 24))
+    emit(0xbd405a11); emit(0x1e202228); emit(0x540002a0)                 # ratio on? b.eq +21
     emit(0x52800011); emit(0x72a88691); emit(0x1e270220)                 # 720.0
-    emit(0x1e203820); emit(0x1e20c000); emit(0x1e2e1010); emit(0x1e302000); emit(0x5400006a)  # |h-720|<1? else try1080
-    emit(0xbd405201); emit(0x1400000a)                                   # s1 = layf; b set
+    emit(0x1e203820); emit(0x1e20c000); emit(0x1e2e1010); emit(0x1e302000); emit(0x5400006a)  # |h-720|<1?
+    emit(0xbd405201); emit(0x14000008)                                   # s1 = layf; b set
     emit(0x52800011); emit(0x72a890f1); emit(0x1e270220)                 # 1080.0
-    emit(0x1e203820); emit(0x1e20c000); emit(0x1e302000); emit(0x5400008a)  # |h-1080|<1? else back
+    emit(0x1e203820); emit(0x1e20c000); emit(0x1e302000); emit(0x5400008a)  # |h-1080|<1?
     emit(0xb9404a11); emit(0x1e220221)                                   # s1 = (float)output height
     emit(0xbd405a02)                                                     # s2 = ratio
     emit(B(here(), _ortho_at + 4))
-    put(_ortho_at, [B(_ortho_at, start)], 'layout SetOrthography params: 720/1080 x 16:9 → layout/output height and the screen ratio (bit 15)')
+    put(_ortho_at, [B(_ortho_at, start)], 'layout SetOrthography params: 720/1080 height → layout/output height and the screen ratio (bit 15)')
 
 
 FRAME_STEP = {
@@ -130,7 +189,7 @@ FRAME_STEP = {
 # How general each patch is and could be (dm/tools/docs_patches.py "Binding", listed in docs/agents/game-patches.md): what, its binding now, the loosest it could have (goal),
 # purpose, why; blocked or kept: why the gap stays open
 BINDING = [
-    {'what': 'screen shape: the render, display-mode, window (swap chain / crop), render-target, layout sizes, UI anchors, Bezel perspective aspect and layout orthography (DM_SCREEN_ASPECT)', 'now': 'build', 'goal': 'unreviewed',
+    {'what': 'screen shape: the render, display-mode, window (swap chain / crop), render-target, layout sizes, UI anchors, Bezel Hor+ fovy + perspective aspect and layout orthography (DM_SCREEN_ASPECT)', 'now': 'build', 'goal': 'unreviewed',
      'purpose': 'rendering',
-     'why': "found at bring-up from the Bezel engine's 1920x1080 / 1280x720 constants and Camera::SetProjectionPerspectiveFovy in this build; whether a Bezel engine rule (Big Brain Academy shares the engine) could carry it is not judged yet"},
+     'why': "found at bring-up from the Bezel engine's 1920x1080 / 1280x720 constants and Camera::SetProjectionPerspectiveFovy in this build (Hor+ mush8: widen fovy by k, aspect→ratio); whether a Bezel engine rule (Big Brain Academy shares the engine) could carry it is not judged yet"},
 ]
