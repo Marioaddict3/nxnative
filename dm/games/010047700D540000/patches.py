@@ -58,6 +58,17 @@ _win = [
     (0x6895d8, 0xb9008503, 13, 2, 3, 'window config docked size [i] main+0x6895c0 (+0x84): str w3 → the screen shape height (bit 13)'),
 ]
 
+# Perspective aspect (bit 14): nn::bezel::Camera::SetProjectionPerspectiveFovy(ffff) at main+0x61f880 (dynsym). The 3-arg overload (main+0x61e900) loads a hard-coded 16/9
+# (rodata main+0x11b93d0) into s1 and branches here; other callers pass an aspect in s1. After the prologue copies the aspect into s8 (main+0x61f898), a 16:9 aspect
+# (within state +0x78 of the constant at +0x74) takes the screen's ratio at +0x58 so the frustum matches the taller window. Other aspects pass. s16 / s17 are scratch
+# (caller-saved); s0 (fovy) stays; s1 is overwritten by the next instruction (fmov s1,#0.5).
+_proj_at, _proj_orig, _proj_bit = 0x61f898, 0x4ea11c28, 14
+
+# 2D / layout orthography (bit 15): projection-type dispatch at main+0x64bb0, orthographic case (type 0) at main+0x64d18 builds L/R/T/B from height (+0x30) and aspect (+0x2c).
+# A 720 x 16:9 pair becomes the layout height (+0x50) and the screen ratio; a 1080 x 16:9 pair becomes the output height (scvtf of +0x48) and the ratio. Other sizes pass.
+# The type-0x400 branch calls SetProjectionPerspectiveFovy and is covered by bit 14. s0 is free (next is fmov s0,#0.5).
+_ortho_at, _ortho_orig, _ortho_bit = 0x64d18, 0x2d458662, 15
+
 
 def screen_shape(ctx):
     here, emit, site, put, STATE = ctx.here, ctx.emit, ctx.site, ctx.put, ctx.state
@@ -84,6 +95,32 @@ def screen_shape(ctx):
             emit(word)
         emit(orig); emit(B(here(), at + 4))
         put(at, [B(at, start)], why)
+    # bit 14
+    site(_proj_at, struct.pack('<I', _proj_orig).hex())
+    start = here(); emit(_proj_orig)
+    emit(ADRP(16, here(), STATE)); emit(_mask); emit(_tbz17(_proj_bit, 11))
+    emit(0xbd405a11); emit(0x1e202228); emit(0x54000100)                 # ratio on?
+    emit(0xbd407610); emit(0x1e303911); emit(0x1e20c231); emit(0xbd407a10)  # |s8-16/9|
+    emit(0x1e302220); emit(0x5400004a)                                   # within wtol?
+    emit(0xbd405a08)                                                     # s8 = ratio
+    emit(B(here(), _proj_at + 4))
+    put(_proj_at, [B(_proj_at, start)], 'SetProjectionPerspectiveFovy: a 16:9 aspect → the screen ratio (bit 14)')
+    # bit 15
+    site(_ortho_at, struct.pack('<I', _ortho_orig).hex())
+    start = here(); emit(_ortho_orig)
+    emit(ADRP(16, here(), STATE)); emit(_mask); emit(_tbz17(_ortho_bit, 30))
+    emit(0xbd405a11); emit(0x1e202228); emit(0x54000360)                 # ratio on? b.eq +27
+    emit(0xbd407610); emit(0x1e303840); emit(0x1e20c000); emit(0xbd407a10)
+    emit(0x1e302000); emit(0x540002aa)                                   # aspect ~16/9? b.ge +21
+    emit(0x52800011); emit(0x72a88691); emit(0x1e270220)                 # 720.0
+    emit(0x1e203820); emit(0x1e20c000); emit(0x1e2e1010); emit(0x1e302000); emit(0x5400006a)  # |h-720|<1? else try1080
+    emit(0xbd405201); emit(0x1400000a)                                   # s1 = layf; b set
+    emit(0x52800011); emit(0x72a890f1); emit(0x1e270220)                 # 1080.0
+    emit(0x1e203820); emit(0x1e20c000); emit(0x1e302000); emit(0x5400008a)  # |h-1080|<1? else back
+    emit(0xb9404a11); emit(0x1e220221)                                   # s1 = (float)output height
+    emit(0xbd405a02)                                                     # s2 = ratio
+    emit(B(here(), _ortho_at + 4))
+    put(_ortho_at, [B(_ortho_at, start)], 'layout SetOrthography params: 720/1080 x 16:9 → layout/output height and the screen ratio (bit 15)')
 
 
 FRAME_STEP = {
@@ -93,7 +130,7 @@ FRAME_STEP = {
 # How general each patch is and could be (dm/tools/docs_patches.py "Binding", listed in docs/agents/game-patches.md): what, its binding now, the loosest it could have (goal),
 # purpose, why; blocked or kept: why the gap stays open
 BINDING = [
-    {'what': 'screen shape: the render, display-mode, window (swap chain / crop), render-target and layout sizes and the UI anchors (DM_SCREEN_ASPECT)', 'now': 'build', 'goal': 'unreviewed',
+    {'what': 'screen shape: the render, display-mode, window (swap chain / crop), render-target, layout sizes, UI anchors, Bezel perspective aspect and layout orthography (DM_SCREEN_ASPECT)', 'now': 'build', 'goal': 'unreviewed',
      'purpose': 'rendering',
-     'why': "found at bring-up from the Bezel engine's 1920x1080 / 1280x720 constants in this build; whether a Bezel engine rule (Big Brain Academy shares the engine) could carry it is not judged yet"},
+     'why': "found at bring-up from the Bezel engine's 1920x1080 / 1280x720 constants and Camera::SetProjectionPerspectiveFovy in this build; whether a Bezel engine rule (Big Brain Academy shares the engine) could carry it is not judged yet"},
 ]

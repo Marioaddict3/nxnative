@@ -2,7 +2,7 @@
 
 Update v262144, `main` build ID `FAD4615A54DCC997B07A7BE8588505DD62DD9A49` (the rewriter's key: `fad4615a54dcc997b07a7be8588505dd`). NDcube's NintendoWare **Bezel** engine (strings `D:/home/Bezel/...`, `BEXViewport`, `ProjectionType_PerspectiveFovy` / `ProjectionType_Orthographic`, `MultiViewport[%d]`), the engine of [Big Brain Academy: Brain vs. Brain](../0100620012D6E000/README.md) too; not sead / agl, so none of Breath of the Wild's or Animal Crossing: New Horizons' screen-shape functions exist here.
 
-**Status: screen-shape (Duo fill-aspect) profile, IPA keys partly guessed.** Not brought up: never run on the Mac or a device.
+**Status: screen-shape (Duo fill-aspect) profile, IPA keys partly guessed.** Window fill verified on Duo at `0a54a56` (stretched); bits 14–15 (Bezel perspective aspect + layout orthography) untested on device.
 
 ## What it needs
 
@@ -25,7 +25,7 @@ Filled from what is known: `program_id` (= title ID), `ipa` (`ClubhouseGames51Wo
 
 DM_SCREEN_ASPECT (loader.c) puts the output height at state +0x48 (1344 at 1.43:1), the layout height at +0x4c (896) and its float at +0x50; 0 = 16:9, and every stub then runs only the original instruction. Widths stay (1920, 1280); heights rise. Each stub is gated by one bit of the site mask at +0x54 (`DM_SCREEN_ASPECT_SITES`, all on by default), so sites can be tried one by one. Each stub runs the site's original instruction, then writes the host's height into the register it set. x16 / x17 are scratch: every site is in straight-line code ending in a call or tail call; the anchor function (main+0x3cb600..0x3cc200) uses neither register anywhere.
 
-Hybrid of the two references: Breath of the Wild-style size stubs for the render / display sizes (bits 0-5) and New Horizons-style layout sizes for the 2D viewports and UI anchors (bits 6-11).
+Hybrid of the two references: Breath of the Wild-style size stubs for the render / display / window sizes (bits 0-5, 12-13), New Horizons-style layout sizes for the 2D viewports and UI anchors (bits 6-11), and Bezel projection stubs for perspective aspect and layout orthography (bits 14-15).
 
 | Bit | Site (`main+`) | Original | Change |
 |---|---|---|---|
@@ -41,6 +41,10 @@ Hybrid of the two references: Breath of the Wild-style size stubs for the render
 | 9 | `0x2864e8` | `mov w8,#720` (default viewport {0,0,1280,720} of main+0x2864d0) | the layout height |
 | 10 | `0x28672c` | `mov w9,#720` (default viewport of main+0x286720) | the layout height |
 | 11 | `0x3cb728`, `0x3cb744`, `0x3cbd28`, `0x3cbd44` | `ldr s,[x,idx,lsl #2]` from rodata main+0x11ba310 {1280.0,720.0,1280.0,720.0} by anchor index 0..3 | an odd (height) index → the layout height (float), so bottom-anchored panes sit at the taller screen's edge |
+| 12 | `0x6f0b40` | `str w4,[x8,x9]` (set-size request height) | a 16:9 request → w × output height / 1920 |
+| 13 | `0x68952c` / `0x68954c` / `0x689588` / `0x68959c` / `0x6895d8` | window config `SetDisplaySize` / handheld / docked height stores | a 16:9 height → w × output height / 1920 (swap chain + crops) |
+| 14 | `0x61f898` | `mov v8.16b,v1.16b` in `nn::bezel::Camera::SetProjectionPerspectiveFovy(ffff)` | a 16:9 aspect → the screen ratio at state +0x58 (covers the 3-arg overload's hard-coded 16/9 load too) |
+| 15 | `0x64d18` | `ldp s2,s1,[x19,#0x2c]` (orthographic branch of the projection-type dispatch) | 720 × 16:9 → layout height + ratio; 1080 × 16:9 → output height + ratio |
 
 **Why no `duo_anchor.c`.** Breath of the Wild's and New Horizons' anchoring hooks `nn::ui2d::Pane::Calculate` and walks NintendoWare Ui2d pane fields (parent, translation, size, global matrix, name). Bezel's layout panes have not been identified (no class, vtable or field offsets), so porting it would be guesswork. The anchor-size loads (bit 11) are the nearest honest equivalent: they move what Bezel anchors to the layout's bottom edge, but they do not stretch full-screen backgrounds or move the HUD's children the way duo_calc does.
 
@@ -53,8 +57,8 @@ Hybrid of the two references: Breath of the Wild-style size stubs for the render
 ### Open
 
 - **No device or Mac test.** Which bits help or hurt is unknown; start with `DM_SCREEN_ASPECT_SITES` covering a few bits at a time.
-- **Bits 12-13 untested on a device**: expect `WindowInitialize ... first 1920x1344`, `WindowCrop 0,0 1280x896` (handheld) / `1920x1344` (docked) and `present: picture shape 1920x1344`.
-- **No projection (FOV) writer found.** No fovy / aspect float constants were located. Bezel's `ProjectionType_PerspectiveFovy` is known only from reflection strings. If the camera's aspect comes from the resized viewport, the 3D view keeps its vertical angle and loses 16:9's sides; if it is fixed at 16:9 elsewhere, the picture stretches. Either way a projection stub (BotW's fov_stub) is still to be written once the writer is found (Ghidra).
+- **Bits 12-13 verified on Duo** (`0a54a56`): window fills (WindowCrop / present 1920x1344) but 2D and 3D content was stretched.
+- **Bits 14-15 untested on a device**: bit 14 sets Bezel camera aspect to the screen ratio for 16:9 inputs; bit 15 retargets layout orthography 720/1080 × 16:9. Expect no vertical stretch; 3D keeps its vertical FOV and loses a little of each side (BotW-style fovy widen not applied). If UI is still stretched, try `DM_SCREEN_ASPECT_SITES=0xc000` (bits 14–15 only) then add layout bits back.
 - Callee semantics (main+0x259690 / 0x259620 / 0x68a110 / 0x6f0b00 / 0x2f25b0 / 0x843340) are inferred from their arguments, not named. The display-mode table's layout (+0x6c..+0x84 as width / height arrays) is a reading of its stores.
 - Not stubbed: the second render-target table (rodata main+0x11c3d8c, read from main+0x338cdc), the UI rect main+0x11ba318 (main+0x3ff4c0), the {1920.0,1080.0,…} block main+0x11ba700 (no direct reference found), the 1152x648 / 1600x900 thunks next to bits 6-8, and ORR-immediate / literal-load forms (only MOVZ immediates and rodata pairs were scanned).
 - Binding: `build` → unreviewed. Big Brain Academy is on the same engine (1.56); whether these functions match there (an engine rule) is not checked.
