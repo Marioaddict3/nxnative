@@ -67,12 +67,12 @@ _win = [
 _proj_at, _proj_orig, _proj_bit = 0x61f898, 0x4ea11c28, 14
 _TANF, _ATANF = 0xfda760, 0xfda770
 
-# 2D / layout orthography (bit 15): projection-type dispatch at main+0x64bb0, orthographic case (type 0) at
-# main+0x64d18 builds L/R/T/B from height (+0x30) and aspect (+0x2c). A 720 height becomes the layout height
-# (+0x50) and the screen ratio; a 1080 height becomes the output height (scvtf of +0x48) and the ratio. No
-# aspect gate: a height that still says 720 after the ratio was already written still grows (the previous
-# 16:9-only gate left those stretched). Type 0x400 calls SetProjectionPerspectiveFovy (bit 14).
-_ortho_at, _ortho_orig, _ortho_bit = 0x64d18, 0x2d458662, 15
+# 2D / layout orthography (bit 15): nn::bezel::Camera::SetOrthography at main+0x61ffa0. Several builders
+# (the type-0 dispatch at main+0x64d18, and at least main+0x6def00) pass top/bottom/left/right; a 16:9
+# span of ~720 (or ~1080) still stretched UI after the single-builder stub. This entry hook keeps L/R
+# (horizontal FOV of the layout) and expands T/B around the centre to the layout / output height so
+# 1280×720 content stays native scale with more above and below (mush8). s6/s7/s16/s17 are scratch.
+_ortho_at, _ortho_orig, _ortho_bit = 0x61ffa0, 0xfc1c0fee, 15
 
 
 
@@ -166,20 +166,47 @@ def screen_shape(ctx):
     words[i_back] = B(start + i_back * 4, _proj_at + 4)
     for w in words: emit(w)
     put(_proj_at, [B(_proj_at, start)], 'SetProjectionPerspectiveFovy: Hor+ fovy widen + 16:9 aspect → screen ratio (bit 14)')
-    # bit 15: layout ortho height → layout/output, aspect → ratio (no aspect gate)
+    # bit 15: SetOrthography entry — expand T/B when span ≈ 720/1080; keep L/R (Hor+ 2D)
     site(_ortho_at, struct.pack('<I', _ortho_orig).hex())
-    start = here(); emit(_ortho_orig)
-    emit(ADRP(16, here(), STATE)); emit(_mask); emit(_tbz17(_ortho_bit, 24))
-    emit(0xbd405a11); emit(0x1e202228); emit(0x540002a0)                 # ratio on? b.eq +21
-    emit(0x52800011); emit(0x72a88691); emit(0x1e270220)                 # 720.0
-    emit(0x1e203820); emit(0x1e20c000); emit(0x1e2e1010); emit(0x1e302000); emit(0x5400006a)  # |h-720|<1?
-    emit(0xbd405201); emit(0x14000008)                                   # s1 = layf; b set
-    emit(0x52800011); emit(0x72a890f1); emit(0x1e270220)                 # 1080.0
-    emit(0x1e203820); emit(0x1e20c000); emit(0x1e302000); emit(0x5400008a)  # |h-1080|<1?
-    emit(0xb9404a11); emit(0x1e220221)                                   # s1 = (float)output height
-    emit(0xbd405a02)                                                     # s2 = ratio
-    emit(B(here(), _ortho_at + 4))
-    put(_ortho_at, [B(_ortho_at, start)], 'layout SetOrthography params: 720/1080 height → layout/output height and the screen ratio (bit 15)')
+    start = here()
+    words = []
+    def E(w):
+        words.append(w & 0xffffffff)
+    def cond(i, ti, c):
+        pc = start + i * 4; tgt = start + ti * 4
+        words[i] = 0x54000000 | (((tgt - pc) // 4) & 0x7ffff) << 5 | c
+    def tbz(i, ti, bit=_ortho_bit):
+        pc = start + i * 4; tgt = start + ti * 4
+        words[i] = _tbz17(bit, ((tgt - pc) // 4) & 0x3fff)
+    def b_to(i, ti):
+        words[i] = B(start + i * 4, start + ti * 4)
+    E(ADRP(16, start, STATE)); E(_mask)
+    i_tbz = len(words); E(0)
+    E(0xbd405a11); E(0x1e202228); i_r0 = len(words); E(0)                 # ratio on?
+    E(0xbd405211); E(0x1e202228); i_l0 = len(words); E(0)                 # layf on?
+    E(0x1e213806); E(0x1e20c0c6)                                         # s6 = |top-bottom|
+    E(0x52800011); E(0x72a88691); E(0x1e270227)                           # s7 = 720
+    E(0x1e2738d1); E(0x1e20c231); E(0x1e2e1010); E(0x1e302220)           # |s6-720|<1?
+    i_ge720 = len(words); E(0)
+    E(0xbd405207); i_do = len(words); E(0)                               # s7 = layf; b expand
+    i_try1080 = len(words)
+    E(0x52800011); E(0x72a890f1); E(0x1e270227)                           # s7 = 1080
+    E(0x1e2738d1); E(0x1e20c231); E(0x1e2e1010); E(0x1e302220)
+    i_ge1080 = len(words); E(0)
+    E(0xb9404a11); E(0x1e220227)                                         # s7 = (float)output
+    i_expand = len(words)
+    E(0x1e212810); E(0x1e2c1011); E(0x1e310a10); E(0x1e3108e7)           # centre, half
+    E(0x1e272a00); E(0x1e273a01)                                         # top/bottom
+    i_orig = len(words); E(_ortho_orig)
+    i_back = len(words); E(0)
+    words[0] = ADRP(16, start, STATE)
+    tbz(i_tbz, i_orig)
+    cond(i_r0, i_orig, 0); cond(i_l0, i_orig, 0)
+    cond(i_ge720, i_try1080, 0xa); b_to(i_do, i_expand)
+    cond(i_ge1080, i_orig, 0xa)
+    words[i_back] = B(start + i_back * 4, _ortho_at + 4)
+    for w in words: emit(w)
+    put(_ortho_at, [B(_ortho_at, start)], 'SetOrthography: 720/1080 T/B span → layout/output height, L/R kept (bit 15)')
 
 
 FRAME_STEP = {
@@ -189,7 +216,7 @@ FRAME_STEP = {
 # How general each patch is and could be (dm/tools/docs_patches.py "Binding", listed in docs/agents/game-patches.md): what, its binding now, the loosest it could have (goal),
 # purpose, why; blocked or kept: why the gap stays open
 BINDING = [
-    {'what': 'screen shape: the render, display-mode, window (swap chain / crop), render-target, layout sizes, UI anchors, Bezel Hor+ fovy + perspective aspect and layout orthography (DM_SCREEN_ASPECT)', 'now': 'build', 'goal': 'unreviewed',
+    {'what': 'screen shape: the render, display-mode, window (swap chain / crop), render-target, layout sizes, UI anchors, Bezel Hor+ fovy + perspective aspect and SetOrthography T/B expand (DM_SCREEN_ASPECT)', 'now': 'build', 'goal': 'unreviewed',
      'purpose': 'rendering',
-     'why': "found at bring-up from the Bezel engine's 1920x1080 / 1280x720 constants and Camera::SetProjectionPerspectiveFovy in this build (Hor+ mush8: widen fovy by k, aspect→ratio); whether a Bezel engine rule (Big Brain Academy shares the engine) could carry it is not judged yet"},
+     'why': "found at bring-up from the Bezel engine's 1920x1080 / 1280x720 constants, Camera::SetProjectionPerspectiveFovy (Hor+ fovy) and SetOrthography (Hor+ 2D T/B) in this build; whether a Bezel engine rule (Big Brain Academy shares the engine) could carry it is not judged yet"},
 ]
