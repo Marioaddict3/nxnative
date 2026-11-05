@@ -2112,6 +2112,10 @@ def split_shaders(py, repo, roms, mains, pkg, env, logs, g, provisional=False, o
         for n in names: shutil.copyfile(tmp / 'tables' / n, g.table(n))
     else:
         # Data rows byte-identical to the profile's = the same game files the tables were built from; if not, stop (the profile's tables are left alone). Only data rows are compared: the header of Engage's profile tables was written by an older shader_split
+        # A registered profile whose tables are still the EMPTY_TABLES placeholders (new, not split yet) takes this split's tables into its folder, to be committed
+        seed = [n for n in names if n in EMPTY_TABLES and (not g.table(n).is_file() or data_rows(g.table(n).read_bytes()) == data_rows(EMPTY_TABLES[n].encode()))]
+        for n in seed: shutil.copyfile(tmp / 'tables' / n, g.table(n))
+        if seed: say(f'[RED] game profile {g.id} had placeholder shader tables: wrote this split\'s {", ".join(seed)} into {g.dir}; commit them')
         diff = [n for n in names if data_rows((tmp / 'tables' / n).read_bytes()) != data_rows(g.table(n).read_bytes())]
         if diff: raise BuildError(f'the split shader tables differ from game profile {g.id}\'s: {", ".join(diff)} (game files not the versions the profile registers?)')
     rmtree(kf); rmtree(outputkf); swap_in(tmp / 'pkg', pkg); rmtree(tmp)

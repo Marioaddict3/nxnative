@@ -119,6 +119,9 @@ def load_patches():
     return tables, where
 PATCHES, PATCH_WHERE = load_patches()
 BUILD_ID = MOD.build_id[:0x10].hex()
+# The frame step state page (FRAME_STEP, below) is the page after the key page: when the key page ends on a 64 KB boundary (Clubhouse Games 51's main) the appended patch area would
+# start right there, so it moves up 64 KB to leave the state page zero (other layouts are unchanged)
+if not FAR and NAME == 'main' and BUILD_ID in PATCHES['FRAME_STEP'] and KEY_PAGE_OFF + 0x8000 > PATCH_OFF: PATCH_OFF += 0x10000
 cuts = list(PATCHES['CUTS'].get(BUILD_ID, []))
 if BUILD_ID not in PATCHES['CUTS']:
     from nso_match import resolve
