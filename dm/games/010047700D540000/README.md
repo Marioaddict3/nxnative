@@ -17,7 +17,9 @@ Filled from what is known: `program_id` (= title ID), `ipa` (`ClubhouseGames51Wo
 
 **Confirmed at bring-up:** `romfs_marker` is `Archive/boot.nx.bea` (Clubhouse RomFS; there is no `Permanent~01Boot`).
 
-**Guessed, TODO at bring-up** (`# TODO` in [`game.tsv`](game.tsv)): `app_category` (board-games), `modules main sdk` (the subsdks and every build ID but main's are unknown; the NSP script's NRO pass adds subsdks NROs import), `zip_store`, `shader_groups`, the memory keys (`sys_resource 0`, `mem_reserve`, `mem_alias`, `mem_stack`, `app_pool`) and `op_mode handheld` / `perf_mode boost`, all from [Big Brain Academy](../0100620012D6E000/game.tsv) (same Bezel engine). Still missing: v262144's display version, `depth_mode`, `mem_used` (the heap check sets it), the SDK version.
+**Confirmed at bring-up:** `modules` is `main subsdk0 subsdk1 sdk` with build IDs from the v262144 ExeFS (`main=fad4615a…`, `subsdk0=0e0956c8…`, `subsdk1=5a7ada8d…`, `sdk=ad3fdfbd…`). Display version in the `build` row is still a placeholder (`v262144`); replace from control.nacp when known. SDK major is read from the loaded `sdk` module at run time.
+
+**Guessed, TODO at bring-up** (`# TODO` in [`game.tsv`](game.tsv)): `app_category` (board-games), `zip_store`, `shader_groups`, the memory keys (`sys_resource 0`, `mem_reserve`, `mem_alias`, `mem_stack`, `app_pool`) and `op_mode handheld` / `perf_mode boost`, all from [Big Brain Academy](../0100620012D6E000/game.tsv) (same Bezel engine). Still missing: v262144's display version, `depth_mode`, `mem_used` (the heap check sets it), the SDK version.
 
 ## Screen shape
 

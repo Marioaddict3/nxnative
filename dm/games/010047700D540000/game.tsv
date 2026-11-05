@@ -1,5 +1,5 @@
-# Game profile of Clubhouse Games: 51 Worldwide Classics (Switch, update v262144). Not brought up yet: the keys the IPA script needs are filled, several guessed
-# (TODO lines, README.md)
+# Game profile of Clubhouse Games: 51 Worldwide Classics (Switch, update v262144). Not brought up yet: IPA keys filled; some memory/mode values still guessed
+# (TODO lines, README.md). Module build IDs are from the v262144 ExeFS.
 # Format: see dm/games/README.md
 # NDcube's NintendoWare Bezel engine (strings D:/home/Bezel/..., BEXViewport), not sead / agl
 
@@ -14,14 +14,14 @@ ipa	ClubhouseGames51WorldwideClassics.ipa
 app_category	public.app-category.board-games
 
 # ---- Versions ----
-# only main's build ID of update v262144 is known; its display version and the other modules' build IDs are a TODO of the bring-up (README.md)
-build	v262144	v262144	main=fad4615a54dcc997b07a7be8588505dd
+# Module build IDs from the v262144 ExeFS. Display version is still a placeholder (control.nacp TODO).
+build	v262144	v262144	main=fad4615a54dcc997b07a7be8588505dd	subsdk0=0e0956c8d8d7489bf178e9efd9055a3b	subsdk1=5a7ada8dd7447c10aa244944f64d0aff	sdk=ad3fdfbd62a5f4b082d385ffe420d440
 package	v262144
 shader_versions	v262144
 
 # ---- Files ----
-# TODO bring-up: modules guessed (main + sdk, the survey's base). The subsdk* (GLSLC, movie) and their build IDs are unknown without the NSP; the NSP script's NRO pass adds subsdks NROs import
-modules	main sdk
+# ExeFS modules of update v262144 (rtld replaced by the host). Build IDs from George's extract.
+modules	main subsdk0 subsdk1 sdk
 # RomFS marker (confirmed from Clubhouse RomFS listing): Archive/boot.nx.bea (no Permanent~01Boot)
 romfs_marker	Archive/boot.nx.bea
 zip_store	.bea:.bfstm:.mp4:.metallib
