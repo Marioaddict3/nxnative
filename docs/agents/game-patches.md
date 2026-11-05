@@ -57,7 +57,7 @@ Every patch bound tighter than it could be: the open gaps, then the blocked, kep
 | `build` → `game` | frame step floor 2 → 1 vsync, and its frame step | frame rate | blocked: frame-step stubs have no function-matched form yet | judgement | 1 | [Paper Mario: The Thousand-Year Door](../../dm/games/0100ECD018EBE000/README.md) | the game's own clock floor and step |
 | `build` → `game` | screen shape: the sizes, the view, the layouts' projection and their edge widgets (DM_SCREEN_ASPECT) | rendering | blocked: the stubs have no function-matched form yet | judgement | 1 | [Animal Crossing: New Horizons](../../dm/games/01006F8002326000/README.md) | the output size is the host's, but where the game takes its sizes, its cameras and its layouts are this build's code |
 | `build` → `game` | Hagi coroutine stack region 1 GB → 64 MB | memory | kept: 1.1.4 is the last update; a match over Hagi would serve no other build of this game | checked: the final build 1.1.4 (the only one the profile packs), 2026-11-04 | 1 | [Super Mario 3D All-Stars: Super Mario Sunshine](../../dm/games/010049900F546002/README.md) | a size inside Hagi's own code: nothing the host sees tells a 1 GB reservation it can shrink from one it cannot |
-| `build` → unreviewed | screen shape: the render, display-mode, render-target and layout sizes and the UI anchors (DM_SCREEN_ASPECT) | rendering | unreviewed | judgement | 1 | [Clubhouse Games: 51 Worldwide Classics](../../dm/games/010047700D540000/README.md) | found at bring-up from the Bezel engine's 1920x1080 / 1280x720 constants in this build; whether a Bezel engine rule (Big Brain Academy shares the engine) could carry it is not judged yet |
+| `build` → unreviewed | screen shape: the render, display-mode, window (swap chain / crop), render-target and layout sizes and the UI anchors (DM_SCREEN_ASPECT) | rendering | unreviewed | judgement | 1 | [Clubhouse Games: 51 Worldwide Classics](../../dm/games/010047700D540000/README.md) | found at bring-up from the Bezel engine's 1920x1080 / 1280x720 constants in this build; whether a Bezel engine rule (Big Brain Academy shares the engine) could carry it is not judged yet |
 
 ## Summary
 
@@ -66,7 +66,7 @@ Every patch bound tighter than it could be: the open gaps, then the blocked, kep
 | [Animal Crossing: New Horizons](#animal-crossing-new-horizons) | 0 | 0 | 14 | 0 | 0 | `build` → `game` |
 | [ASTRAL CHAIN](#astral-chain) | 0 | 0 | 112 | 0 | 0 | `build` → `game` |
 | [Batman: Arkham Knight](#batman-arkham-knight) | 8 | 0 | 0 | 0 | 1 | `build` → `game` ×2 |
-| [Clubhouse Games: 51 Worldwide Classics](#clubhouse-games-51-worldwide-classics) | 0 | 0 | 15 | 0 | 0 | `build` → unreviewed |
+| [Clubhouse Games: 51 Worldwide Classics](#clubhouse-games-51-worldwide-classics) | 0 | 0 | 21 | 0 | 0 | `build` → unreviewed |
 | [DARK SOULS: REMASTERED](#dark-souls-remastered) | 2 | 0 | 0 | 0 | 0 | `build` → `game` |
 | [EA SPORTS FC 27](#ea-sports-fc-27) | 0 | 0 | 0 | 0 | 1 | `build` → `engine` |
 | [FINAL FANTASY CRYSTAL CHRONICLES Remastered Edition](#final-fantasy-crystal-chronicles-remastered-edition) | 8 | 0 | 0 | 0 | 0 | `build` → `engine` |
@@ -268,10 +268,10 @@ Every patch bound tighter than it could be: the open gaps, then the blocked, kep
 
 [Clubhouse Games: 51 Worldwide Classics](../../dm/games/010047700D540000/README.md), `010047700D540000`, [patches.py](../../dm/games/010047700D540000/patches.py).
 
-- **`build` → unreviewed**, rendering, unreviewed, judgement: screen shape: the render, display-mode, render-target and layout sizes and the UI anchors (DM_SCREEN_ASPECT). Found at bring-up from the Bezel engine's 1920x1080 / 1280x720 constants in this build; whether a Bezel engine rule (Big Brain Academy shares the engine) could carry it is not judged yet
+- **`build` → unreviewed**, rendering, unreviewed, judgement: screen shape: the render, display-mode, window (swap chain / crop), render-target and layout sizes and the UI anchors (DM_SCREEN_ASPECT). Found at bring-up from the Bezel engine's 1920x1080 / 1280x720 constants in this build; whether a Bezel engine rule (Big Brain Academy shares the engine) could carry it is not judged yet
 
-- **v262144 `main`** `fad4615a…` ([patches.py:67](../../dm/games/010047700D540000/patches.py#L67))
-  <details><summary>15 frame-step sites</summary>
+- **v262144 `main`** `fad4615a…` ([patches.py:90](../../dm/games/010047700D540000/patches.py#L90))
+  <details><summary>21 frame-step sites</summary>
 
   - frame step `+0x5cad0`: render init: 1920x1080 into main+0x259690: mov w2,#1080 → the output height (bit 0)
   - frame step `+0x5cae8`: render init: 1280x720 into main+0x259620: mov w2,#720 → the layout height (bit 1)
@@ -288,6 +288,12 @@ Every patch bound tighter than it could be: the open gaps, then the blocked, kep
   - frame step `+0x68915c`: display-mode table +0x64 / +0x8c: 1920x1080 → 1920 x the output height (bit 2)
   - frame step `+0x689178`: display-mode table +0x74: the 720 heights → the layout height (bit 3)
   - frame step `+0x689190`: display-mode table +0x84: 900,1080 → 5/6 of the output height, the output height (bit 4)
+  - frame step `+0x68952c`: window config SetDisplaySize main+0x689520 (+0x64 / +0x68, the swap chain texture): str w2 → the screen shape height (bit 13)
+  - frame step `+0x68954c`: window config handheld sizes main+0x689540 (+0x74 / +0x78): str w2 → the screen shape height (bit 13)
+  - frame step `+0x689588`: window config handheld size [i] main+0x689570 (+0x74): str w3 → the screen shape height (bit 13)
+  - frame step `+0x68959c`: window config docked sizes main+0x689590 (+0x84 / +0x88): str w2 → the screen shape height (bit 13)
+  - frame step `+0x6895d8`: window config docked size [i] main+0x6895c0 (+0x84): str w3 → the screen shape height (bit 13)
+  - frame step `+0x6f0b40`: set-size main+0x6f0b00: str w4 (the requested height of w3 x w4) → the screen shape height (bit 12)
 
   </details>
 

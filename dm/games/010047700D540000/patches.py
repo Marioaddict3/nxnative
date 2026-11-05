@@ -44,6 +44,20 @@ _sites = [
 # pane at (a + b) x 0.5: an odd index is a height, which takes the layout height so edge widgets anchored to the bottom move to the taller screen's edge (bit 11)
 _anchor = [(0x3cb728, 0xbc687921, 8, 1), (0x3cb744, 0xbc697940, 9, 0), (0x3cbd28, 0xbc687920, 8, 0), (0x3cbd44, 0xbc697941, 9, 1)]   # ldr s<d>,[x<base>,x<idx>,lsl #2]
 
+# Window sizes (what NVN's window crop and the presented picture follow): the window object (main+0x6e7ae0 copies its config) keeps the swap chain texture size at +0x70a4
+# and per mode (handheld, docked) two requested sizes at +0x7708..; main+0x6f0b00 sets a requested size and the crop (+0x7738 / +0x7740, into nvnWindowSetCrop at
+# main+0x6e85a4 / main+0x6ef428) is the request clamped to the texture size. The game's boot script overrides the constructor's defaults (bits 2-4) through the config
+# setters below (callers main+0x9a249c..0x9a2c00), so the texture stayed 1920x1080 and the crops 1280x720 / 1920x1080. A size of 16:9 (16 x h = 9 x w) takes the height
+# w x the output height / 1920 (1280 → 896, 1600 → 1120, 1920 → 1344); others pass. These stubs work on a store, so the height register is set before the original store runs
+_win = [
+    (0x6f0b40, 0xb8296904, 12, 3, 4, 'set-size main+0x6f0b00: str w4 (the requested height of w3 x w4) → the screen shape height (bit 12)'),
+    (0x68952c, 0xb9006902, 13, 1, 2, 'window config SetDisplaySize main+0x689520 (+0x64 / +0x68, the swap chain texture): str w2 → the screen shape height (bit 13)'),
+    (0x68954c, 0xb9007502, 13, 1, 2, 'window config handheld sizes main+0x689540 (+0x74 / +0x78): str w2 → the screen shape height (bit 13)'),
+    (0x689588, 0xb9007503, 13, 2, 3, 'window config handheld size [i] main+0x689570 (+0x74): str w3 → the screen shape height (bit 13)'),
+    (0x68959c, 0xb9008502, 13, 1, 2, 'window config docked sizes main+0x689590 (+0x84 / +0x88): str w2 → the screen shape height (bit 13)'),
+    (0x6895d8, 0xb9008503, 13, 2, 3, 'window config docked size [i] main+0x6895c0 (+0x84): str w3 → the screen shape height (bit 13)'),
+]
+
 
 def screen_shape(ctx):
     here, emit, site, put, STATE = ctx.here, ctx.emit, ctx.site, ctx.put, ctx.state
@@ -61,6 +75,15 @@ def screen_shape(ctx):
         stub(at, orig, bit, load, apply, why)
     for at, orig, idx, d in _anchor:
         stub(at, orig, 11, _layf, [_fmov(d)], 'UI anchor size: an odd (height) index takes the layout height (bit 11)', index=idx)
+    for at, orig, bit, w, h, why in _win:
+        site(at, struct.pack('<I', orig).hex())
+        start = here()
+        for word in (ADRP(16, here(), STATE), _mask, _tbz17(bit, 10), _out, _cbz17(8),
+                     0x531c6c10 | h << 5, 0x4b000e10 | w << 16, 0x6b00021f | w << 16,   # lsl w16,wH,#4; sub w16,w16,wW,lsl #3; cmp w16,wW (16h - 8w = w: 16:9)
+                     0x54000081, 0x1b117c10 | w << 5, 0x5280f011, 0x1ad10a00 | h):     # b.ne orig; mul w16,wW,w17; mov w17,#1920; udiv wH,w16,w17
+            emit(word)
+        emit(orig); emit(B(here(), at + 4))
+        put(at, [B(at, start)], why)
 
 
 FRAME_STEP = {
@@ -70,7 +93,7 @@ FRAME_STEP = {
 # How general each patch is and could be (dm/tools/docs_patches.py "Binding", listed in docs/agents/game-patches.md): what, its binding now, the loosest it could have (goal),
 # purpose, why; blocked or kept: why the gap stays open
 BINDING = [
-    {'what': 'screen shape: the render, display-mode, render-target and layout sizes and the UI anchors (DM_SCREEN_ASPECT)', 'now': 'build', 'goal': 'unreviewed',
+    {'what': 'screen shape: the render, display-mode, window (swap chain / crop), render-target and layout sizes and the UI anchors (DM_SCREEN_ASPECT)', 'now': 'build', 'goal': 'unreviewed',
      'purpose': 'rendering',
      'why': "found at bring-up from the Bezel engine's 1920x1080 / 1280x720 constants in this build; whether a Bezel engine rule (Big Brain Academy shares the engine) could carry it is not judged yet"},
 ]

@@ -48,10 +48,12 @@ Hybrid of the two references: Breath of the Wild-style size stubs for the render
 
 - Every site's original instruction was checked against the decompressed v262144 `main` (all LZ4 segments, sizes match the header). `fs_site` asserts these at rewrite time.
 - The emitted stubs were disassembled (capstone) with a mock ctx: branches land on the branch back, and each stub returns to site + 4.
+- Window sizes (bits 12-13): George's Duo log (DM_SCREEN_ASPECT=1.43) still had WindowInitialize 1920x1080 and crops 1280x720 / 1920x1080 because the boot script sets the window config through setters (main+0x689520 display/texture, +0x689540 / +0x689570 handheld, +0x689590 / +0x6895c0 docked; callers main+0x9a249c..0x9a2c00) after the constructor defaults of bits 2-4. The window (main+0x6e7ae0) copies that config; nvnWindowSetCrop (main+0x6e85a4, main+0x6ef428) gets the request of main+0x6f0b00 clamped to the texture size. Bit 13 stubs the setters' height stores, bit 12 the request store in main+0x6f0b00 (0x6f0b40); a 16:9 size takes w x output height / 1920. Traced in the image; not yet run on a device.
 
 ### Open
 
 - **No device or Mac test.** Which bits help or hurt is unknown; start with `DM_SCREEN_ASPECT_SITES` covering a few bits at a time.
+- **Bits 12-13 untested on a device**: expect `WindowInitialize ... first 1920x1344`, `WindowCrop 0,0 1280x896` (handheld) / `1920x1344` (docked) and `present: picture shape 1920x1344`.
 - **No projection (FOV) writer found.** No fovy / aspect float constants were located. Bezel's `ProjectionType_PerspectiveFovy` is known only from reflection strings. If the camera's aspect comes from the resized viewport, the 3D view keeps its vertical angle and loses 16:9's sides; if it is fixed at 16:9 elsewhere, the picture stretches. Either way a projection stub (BotW's fov_stub) is still to be written once the writer is found (Ghidra).
 - Callee semantics (main+0x259690 / 0x259620 / 0x68a110 / 0x6f0b00 / 0x2f25b0 / 0x843340) are inferred from their arguments, not named. The display-mode table's layout (+0x6c..+0x84 as width / height arrays) is a reading of its stores.
 - Not stubbed: the second render-target table (rodata main+0x11c3d8c, read from main+0x338cdc), the UI rect main+0x11ba318 (main+0x3ff4c0), the {1920.0,1080.0,…} block main+0x11ba700 (no direct reference found), the 1152x648 / 1600x900 thunks next to bits 6-8, and ORR-immediate / literal-load forms (only MOVZ immediates and rodata pairs were scanned).
