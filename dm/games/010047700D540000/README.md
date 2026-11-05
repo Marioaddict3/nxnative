@@ -2,7 +2,7 @@
 
 Update v262144, `main` build ID `FAD4615A54DCC997B07A7BE8588505DD62DD9A49` (the rewriter's key: `fad4615a54dcc997b07a7be8588505dd`). NDcube's NintendoWare **Bezel** engine (strings `D:/home/Bezel/...`, `BEXViewport`, `ProjectionType_PerspectiveFovy` / `ProjectionType_Orthographic`, `MultiViewport[%d]`), the engine of [Big Brain Academy: Brain vs. Brain](../0100620012D6E000/README.md) too; not sead / agl, so none of Breath of the Wild's or Animal Crossing: New Horizons' screen-shape functions exist here.
 
-**Status: screen-shape (Duo fill-aspect) profile only.** Not brought up: never run on the Mac or a device.
+**Status: screen-shape (Duo fill-aspect) profile, IPA keys partly guessed.** Not brought up: never run on the Mac or a device.
 
 ## What it needs
 
@@ -11,9 +11,11 @@ Update v262144, `main` build ID `FAD4615A54DCC997B07A7BE8588505DD62DD9A49` (the 
 | `screen_aspect on` | [`game.tsv`](game.tsv) | the iOS launcher offers DM_SCREEN_ASPECT; the stubs in [`patches.py`](patches.py) read the state page loader.c fills |
 | `build v262144 … main=fad4615a…` | `game.tsv` | the build the stubs are keyed by |
 
-### TODO for a full (IPA) profile
+### IPA keys (filled so `scripts/build_ipa_from_nsp.py` loads the profile)
 
-Not known from the notes this profile was written from, so left out rather than guessed: the display version of v262144 (the row's second field is `v262144` until then), `program_id`, `modules` and the other modules' build IDs (`subsdk*`, `sdk`), `ipa`, `app_category`, `romfs_marker`, `zip_store`, the memory keys (`sys_resource`, `mem_reserve`, `mem_alias`, `mem_stack`, `app_pool`, `mem_used`), `shader_groups` / `shader_note` and every shader table, `op_mode` / `perf_mode` / `depth_mode` (Big Brain Academy's are a likely start, unchecked), and the SDK version.
+Filled from what is known: `program_id` (= title ID), `ipa` (`ClubhouseGames51WorldwideClassics.ipa`), `package` / `shader_versions` (`v262144`), `shader_note`, and the empty shader tables the NSP script writes for a provisional profile (filled by the shader split).
+
+**Guessed, TODO at bring-up** (`# TODO` in [`game.tsv`](game.tsv)): `app_category` (board-games), `modules main sdk` (the subsdks and every build ID but main's are unknown; the NSP script's NRO pass adds subsdks NROs import), `romfs_marker` / `zip_store`, `shader_groups`, the memory keys (`sys_resource 0`, `mem_reserve`, `mem_alias`, `mem_stack`, `app_pool`) and `op_mode handheld` / `perf_mode boost`, all from [Big Brain Academy](../0100620012D6E000/game.tsv) (same Bezel engine). Still missing: v262144's display version, `depth_mode`, `mem_used` (the heap check sets it), the SDK version.
 
 ## Screen shape
 

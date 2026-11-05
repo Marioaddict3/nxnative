@@ -1,18 +1,47 @@
-# Game profile of Clubhouse Games: 51 Worldwide Classics (Switch, update v262144). Screen-shape (DM_SCREEN_ASPECT) profile only, not brought up yet: see README.md for
-# the keys a full profile still needs (modules, their build IDs, memory, shaders, ipa)
+# Game profile of Clubhouse Games: 51 Worldwide Classics (Switch, update v262144). Not brought up yet: the keys the IPA script needs are filled, several guessed
+# (TODO lines, README.md)
 # Format: see dm/games/README.md
 # NDcube's NintendoWare Bezel engine (strings D:/home/Bezel/..., BEXViewport), not sead / agl
 
 # ---- Identity ----
 title_id	010047700D540000
+program_id	010047700D540000
 
 # ---- App ----
 # Game name: only a label for profile listings and the Mac window title
 name	Clubhouse Games: 51 Worldwide Classics
+ipa	ClubhouseGames51WorldwideClassics.ipa
+app_category	public.app-category.board-games
 
 # ---- Versions ----
 # only main's build ID of update v262144 is known; its display version and the other modules' build IDs are a TODO of the bring-up (README.md)
 build	v262144	v262144	main=fad4615a54dcc997b07a7be8588505dd
+package	v262144
+shader_versions	v262144
+
+# ---- Files ----
+# TODO bring-up: modules guessed (main + sdk, the survey's base). The subsdk* (GLSLC, movie) and their build IDs are unknown without the NSP; the NSP script's NRO pass adds subsdks NROs import
+modules	main sdk
+# TODO bring-up: guessed from Big Brain Academy (same Bezel engine, .bea archives); check against the RomFS
+romfs_marker	Archive/Permanent~01Boot.nx.bea
+zip_store	.bea:.bfstm:.mp4:.metallib
+
+# ---- Memory ----
+# TODO bring-up: Big Brain Academy's layout (Bezel, no system resource); the heap check may move it
+sys_resource	0
+mem_reserve	0x100000000
+mem_alias	0x10000000
+mem_stack	0x10000000
+app_pool	0xCD500000
+
+# ---- Shader split (guessed as Big Brain Academy's) ----
+shader_groups	/System.nx.bea/=system /Archive/=archive
+shader_note	Clubhouse Games: 51 Worldwide Classics shaders
+
+# ---- Mode ----
+# TODO bring-up: handheld (touch) as Big Brain Academy; depth mode not known yet
+op_mode	handheld
+perf_mode	boost
 
 # ---- Graphics ----
 # Screen shape (patches.py): DM_SCREEN_ASPECT renders a screen taller than 16:9 in its own shape, the iPhone Duo's 1.43:1 as 1920x1344 (layouts 1280x896); not tried on a device yet
